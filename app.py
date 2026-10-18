@@ -1,6 +1,6 @@
 """
 app.py
-İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.2.0).
+İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.3.0).
 Bağımsız masaüstü arayüzü, otomatik sıralı/tarihli periyot klasörleme,
 açılış ekranı ve animasyon desteği.
 """
@@ -36,7 +36,7 @@ class CSVGeneratorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("İHA Telemetri CSV Senaryo Üretici v1.2.0")
+        self.title("İHA Telemetri CSV Senaryo Üretici v1.3.0")
         self.geometry("1200x840")
         self.minsize(980, 720)
 
@@ -74,7 +74,7 @@ class CSVGeneratorApp(ctk.CTk):
 
         subtitle_lbl = ctk.CTkLabel(
             top_frame,
-            text="Test ve simülasyon için 14 farklı uçuş/hata senaryosu • v1.2.0",
+            text="Test ve simülasyon için 14 farklı uçuş/hata senaryosu • v1.3.0",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )

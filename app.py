@@ -1,8 +1,9 @@
 """
 app.py
-İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.3.0).
+İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.4.0).
 Bağımsız masaüstü arayüzü, otomatik sıralı/tarihli periyot klasörleme,
-açılış ekranı ve animasyon desteği.
+garantili 1.8 sn animasyonlu İHA açılış ekranı (Splash Screen), pencere fade-in
+ve sekme/sayfa geçiş animasyonları.
 """
 
 import os
@@ -11,12 +12,11 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import customtkinter as ctk
+from PIL import Image
 import pandas as pd
 
-# PyInstaller Açılış Ekranı (Splash Screen) Kapatıcı
 try:
     import pyi_splash
-    pyi_splash.update_text("Arayüz başlatılıyor...")
 except ImportError:
     pyi_splash = None
 
@@ -27,7 +27,7 @@ ctk.set_default_color_theme("green")
 
 
 def get_resource_path(relative_path: str) -> str:
-    """PyInstaller veya normal çalışmada kaynak dosya yolunu döndürür."""
+    """PyInstaller veya taşınabilir çalışmada kaynak dosya yolunu döndürür."""
     base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
@@ -36,11 +36,11 @@ class CSVGeneratorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("İHA Telemetri CSV Senaryo Üretici v1.3.0")
-        self.geometry("1200x840")
-        self.minsize(980, 720)
+        self.title("İHA Telemetri CSV Senaryo Üretici v1.4.0")
+        self.geometry("1220x850")
+        self.minsize(1000, 720)
 
-        # İkon Ayarla
+        # İHA İkonunu Ayarla
         icon_path = get_resource_path(os.path.join("assets", "generator_icon.ico"))
         if os.path.exists(icon_path):
             try:
@@ -54,27 +54,148 @@ class CSVGeneratorApp(ctk.CTk):
 
         self._build_ui()
 
-        # Splash ekranını kapat
         if pyi_splash is not None:
             try:
                 pyi_splash.close()
             except Exception:
                 pass
 
+        # Çok hızlı açılsa bile en az 1.8 saniye garantili animasyonlu Açılış Paneli (Splash) göster
+        self._show_startup_splash()
+
+    def _show_startup_splash(self):
+        """İlk tıklamada ekranda 1.8 saniye boyunca animasyonlu İHA Senaryo Üretici yükleme paneli gösterir."""
+        self.attributes("-alpha", 0.0)
+
+        splash = tk.Toplevel(self)
+        splash.overrideredirect(True)
+        splash.attributes("-topmost", True)
+        splash.configure(bg="#0c2018")
+
+        w, h = 540, 310
+        sw = splash.winfo_screenwidth()
+        sh = splash.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        splash.geometry(f"{w}x{h}+{x}+{y}")
+
+        border = tk.Frame(splash, bg="#2bda72", bd=0)
+        border.place(x=0, y=0, width=w, height=h)
+        inner = tk.Frame(border, bg="#0c2018")
+        inner.place(x=2, y=2, width=w - 4, height=h - 4)
+
+        top_bar = tk.Frame(inner, bg="#2bda72", height=5)
+        top_bar.pack(fill="x", side="top")
+
+        png_path = get_resource_path(os.path.join("assets", "generator_icon.png"))
+        if os.path.exists(png_path):
+            try:
+                pil_img = Image.open(png_path).resize((84, 84), Image.Resampling.LANCZOS)
+                self._splash_logo = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(84, 84))
+                logo_lbl = ctk.CTkLabel(inner, image=self._splash_logo, text="", fg_color="#0c2018")
+                logo_lbl.pack(pady=(22, 8))
+            except Exception:
+                pass
+
+        title_lbl = ctk.CTkLabel(
+            inner,
+            text="İHA TELEMETRİ CSV SENARYO ÜRETİCİ",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#ffffff",
+            fg_color="#0c2018",
+        )
+        title_lbl.pack(pady=(2, 2))
+
+        sub_lbl = ctk.CTkLabel(
+            inner,
+            text="14 Farklı Uçuş, Sensör Anomalisi ve Sınır Değer Test Simülatörü • v1.4.0",
+            font=ctk.CTkFont(size=11),
+            text_color="#69db7c",
+            fg_color="#0c2018",
+        )
+        sub_lbl.pack(pady=(0, 18))
+
+        status_lbl = ctk.CTkLabel(
+            inner,
+            text="İHA simülasyon profilleri yükleniyor... %0",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#e9ecef",
+            fg_color="#0c2018",
+        )
+        status_lbl.pack(pady=(0, 8))
+
+        pbar = ctk.CTkProgressBar(inner, width=430, height=12, corner_radius=6, progress_color="#2bda72", fg_color="#16382b")
+        pbar.set(0.0)
+        pbar.pack(pady=(0, 14))
+
+        footer_lbl = ctk.CTkLabel(
+            inner,
+            text="🛡️ DigiCert İmzalı Güvenli Çalışma Zamanı • Otomatik Tarihli/Sıralı Klasörleme",
+            font=ctk.CTkFont(size=10),
+            text_color="#868e96",
+            fg_color="#0c2018",
+        )
+        footer_lbl.pack(side="bottom", pady=10)
+
+        total_steps = 36  # ~1.8 saniye garantili açılış ekranı
+
+        def animate_splash(step_idx=0):
+            if step_idx <= total_steps:
+                prog = step_idx / total_steps
+                pbar.set(prog)
+                pct = int(prog * 100)
+                if prog < 0.30:
+                    msg = f"14 farklı İHA uçuş ve hata senaryosu yükleniyor... %{pct}"
+                elif prog < 0.65:
+                    msg = f"Sentetik telemetri üretim motoru hazırlanıyor... %{pct}"
+                elif prog < 0.90:
+                    msg = f"Canlı tablo ve ham CSV önizleme katmanı başlatılıyor... %{pct}"
+                else:
+                    msg = f"Simülatör hazır! Arayüz açılıyor... %{pct}"
+                status_lbl.configure(text=msg)
+                self.after(48, animate_splash, step_idx + 1)
+            else:
+                try:
+                    splash.destroy()
+                except Exception:
+                    pass
+                self._fade_in_main_window()
+
+        animate_splash(0)
+
+    def _fade_in_main_window(self, alpha=0.0):
+        """Ana pencereyi yumuşak (fade-in) animasyonla görünür yapar."""
+        alpha = min(1.0, alpha + 0.12)
+        self.attributes("-alpha", alpha)
+        if alpha < 1.0:
+            self.after(20, self._fade_in_main_window, alpha)
+        else:
+            self.focus_force()
+
     def _build_ui(self):
         top_frame = ctk.CTkFrame(self, corner_radius=10)
         top_frame.pack(fill="x", padx=15, pady=(15, 10))
 
+        png_path = get_resource_path(os.path.join("assets", "generator_icon.png"))
+        if os.path.exists(png_path):
+            try:
+                pil_hdr = Image.open(png_path).resize((34, 34), Image.Resampling.LANCZOS)
+                self._hdr_icon = ctk.CTkImage(light_image=pil_hdr, dark_image=pil_hdr, size=(34, 34))
+                hdr_img_lbl = ctk.CTkLabel(top_frame, image=self._hdr_icon, text="")
+                hdr_img_lbl.pack(side="left", padx=(15, 4), pady=10)
+            except Exception:
+                pass
+
         title_lbl = ctk.CTkLabel(
             top_frame,
-            text="🧪 İHA Telemetri CSV Senaryo Üretici",
+            text="İHA Telemetri CSV Senaryo Üretici",
             font=ctk.CTkFont(size=20, weight="bold")
         )
-        title_lbl.pack(side="left", padx=15, pady=12)
+        title_lbl.pack(side="left", padx=(6, 15), pady=12)
 
         subtitle_lbl = ctk.CTkLabel(
             top_frame,
-            text="Test ve simülasyon için 14 farklı uçuş/hata senaryosu • v1.3.0",
+            text="Test ve simülasyon için 14 farklı uçuş/hata senaryosu • v1.4.0",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
@@ -84,17 +205,17 @@ class CSVGeneratorApp(ctk.CTk):
         main_content.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
         # Sol Panel
-        left_panel = ctk.CTkFrame(main_content, width=440, corner_radius=10)
-        left_panel.pack(side="left", fill="y", padx=(0, 10), pady=0)
-        left_panel.pack_propagate(False)
+        self.left_panel = ctk.CTkFrame(main_content, width=440, corner_radius=10, border_width=1, border_color="#2b3035")
+        self.left_panel.pack(side="left", fill="y", padx=(0, 10), pady=0)
+        self.left_panel.pack_propagate(False)
 
-        ctk.CTkLabel(left_panel, text="📌 Senaryo Seçimi:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=15, pady=(12, 5))
+        ctk.CTkLabel(self.left_panel, text="📌 Senaryo Seçimi:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=15, pady=(12, 5))
 
         self.scenario_keys = list(SCENARIO_DESCRIPTIONS.keys())
         self.scenario_values = list(SCENARIO_DESCRIPTIONS.values())
 
         self.combo_scenarios = ctk.CTkComboBox(
-            left_panel,
+            self.left_panel,
             values=self.scenario_values,
             width=400,
             command=self._on_scenario_changed
@@ -103,7 +224,7 @@ class CSVGeneratorApp(ctk.CTk):
         self.combo_scenarios.pack(padx=15, pady=5)
 
         self.lbl_scenario_desc = ctk.CTkLabel(
-            left_panel,
+            self.left_panel,
             text="Seçili senaryo açıklaması burada görünecek.",
             font=ctk.CTkFont(size=11),
             text_color="#ced4da",
@@ -112,48 +233,48 @@ class CSVGeneratorApp(ctk.CTk):
         )
         self.lbl_scenario_desc.pack(anchor="w", padx=15, pady=(2, 12))
 
-        ctk.CTkLabel(left_panel, text="⚙️ Parametre Ayarları:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=15, pady=(5, 5))
+        ctk.CTkLabel(self.left_panel, text="⚙️ Parametre Ayarları:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=15, pady=(5, 5))
 
-        p_row1 = ctk.CTkFrame(left_panel, fg_color="transparent")
+        p_row1 = ctk.CTkFrame(self.left_panel, fg_color="transparent")
         p_row1.pack(fill="x", padx=15, pady=3)
         ctk.CTkLabel(p_row1, text="Kayıt Sayısı (Satır):", font=ctk.CTkFont(size=12)).pack(side="left")
         self.entry_count = ctk.CTkEntry(p_row1, width=80)
         self.entry_count.insert(0, "60")
         self.entry_count.pack(side="right")
 
-        p_row2 = ctk.CTkFrame(left_panel, fg_color="transparent")
+        p_row2 = ctk.CTkFrame(self.left_panel, fg_color="transparent")
         p_row2.pack(fill="x", padx=15, pady=3)
         ctk.CTkLabel(p_row2, text="Kesinti Süresi (sn):", font=ctk.CTkFont(size=12)).pack(side="left")
         self.entry_gap = ctk.CTkEntry(p_row2, width=80)
-        self.entry_gap.insert(0, "8.0")
+        self.entry_gap.insert(0, "12.0")
         self.entry_gap.pack(side="right")
 
-        p_row3 = ctk.CTkFrame(left_panel, fg_color="transparent")
+        p_row3 = ctk.CTkFrame(self.left_panel, fg_color="transparent")
         p_row3.pack(fill="x", padx=15, pady=3)
         ctk.CTkLabel(p_row3, text="Başlangıç İrtifası (m):", font=ctk.CTkFont(size=12)).pack(side="left")
         self.entry_alt = ctk.CTkEntry(p_row3, width=80)
-        self.entry_alt.insert(0, "50.0")
+        self.entry_alt.insert(0, "100.0")
         self.entry_alt.pack(side="right")
 
-        p_row4 = ctk.CTkFrame(left_panel, fg_color="transparent")
+        p_row4 = ctk.CTkFrame(self.left_panel, fg_color="transparent")
         p_row4.pack(fill="x", padx=15, pady=3)
         ctk.CTkLabel(p_row4, text="Başlangıç Hızı (m/s):", font=ctk.CTkFont(size=12)).pack(side="left")
         self.entry_spd = ctk.CTkEntry(p_row4, width=80)
         self.entry_spd.insert(0, "15.0")
         self.entry_spd.pack(side="right")
 
-        p_row5 = ctk.CTkFrame(left_panel, fg_color="transparent")
+        p_row5 = ctk.CTkFrame(self.left_panel, fg_color="transparent")
         p_row5.pack(fill="x", padx=15, pady=3)
-        ctk.CTkLabel(p_row5, text="Başlangıç Bataryası (%):", font=ctk.CTkFont(size=12)).pack(side="left")
+        ctk.CTkLabel(p_row5, text="Başlangıç Batarya (%):", font=ctk.CTkFont(size=12)).pack(side="left")
         self.entry_bat = ctk.CTkEntry(p_row5, width=80)
         self.entry_bat.insert(0, "100.0")
         self.entry_bat.pack(side="right")
 
         # İşlemler
-        ctk.CTkLabel(left_panel, text="🚀 Üretim İşlemleri:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=15, pady=(15, 5))
+        ctk.CTkLabel(self.left_panel, text="🚀 Üretim İşlemleri:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=15, pady=(15, 5))
 
         self.btn_preview = ctk.CTkButton(
-            left_panel,
+            self.left_panel,
             text="👁️ Veriyi Canlı Önizle",
             command=self.preview_data_action,
             fg_color="#1971c2",
@@ -163,7 +284,7 @@ class CSVGeneratorApp(ctk.CTk):
         self.btn_preview.pack(fill="x", padx=15, pady=5)
 
         self.btn_save_csv = ctk.CTkButton(
-            left_panel,
+            self.left_panel,
             text="💾 Seçili Senaryoyu Farklı Kaydet",
             command=self.save_csv_action,
             fg_color="#2b8a3e",
@@ -173,7 +294,7 @@ class CSVGeneratorApp(ctk.CTk):
         self.btn_save_csv.pack(fill="x", padx=15, pady=5)
 
         self.btn_batch_export = ctk.CTkButton(
-            left_panel,
+            self.left_panel,
             text="📦 Tüm Senaryoları Yeni Periyot Klasöründe Üret",
             command=self.batch_export_action,
             fg_color="#7048e8",
@@ -183,7 +304,7 @@ class CSVGeneratorApp(ctk.CTk):
         self.btn_batch_export.pack(fill="x", padx=15, pady=5)
 
         self.btn_open_samples = ctk.CTkButton(
-            left_panel,
+            self.left_panel,
             text="📁 Üretilen Klasörleri Aç",
             command=self.open_samples_folder,
             fg_color="#495057",
@@ -191,32 +312,46 @@ class CSVGeneratorApp(ctk.CTk):
         )
         self.btn_open_samples.pack(fill="x", padx=15, pady=5)
 
-        # Sağ Panel (Tablo Önizleme)
-        right_panel = ctk.CTkFrame(main_content, corner_radius=10)
+        # Sağ Panel (Sekmeli: Tablo Önizleme & Ham CSV Metin Görünümü + Sayfa Geçiş Animasyonu)
+        right_panel = ctk.CTkFrame(main_content, corner_radius=10, fg_color="transparent")
         right_panel.pack(side="right", fill="both", expand=True, padx=0, pady=0)
 
-        preview_header = ctk.CTkFrame(right_panel, fg_color="transparent")
-        preview_header.pack(fill="x", padx=15, pady=12)
+        preview_header = ctk.CTkFrame(right_panel, corner_radius=10)
+        preview_header.pack(fill="x", padx=0, pady=(0, 8))
 
         ctk.CTkLabel(
             preview_header,
-            text="📊 Üretilen Veri Önizlemesi",
+            text="📊 Canlı Telemetri Veri Önizlemesi",
             font=ctk.CTkFont(size=15, weight="bold")
-        ).pack(side="left")
+        ).pack(side="left", padx=15, pady=10)
 
         self.lbl_stats = ctk.CTkLabel(
             preview_header,
             text="Önizleme hazır değil",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=12, weight="bold"),
             text_color="gray"
         )
-        self.lbl_stats.pack(side="right")
+        self.lbl_stats.pack(side="right", padx=15, pady=10)
 
-        table_frame = ctk.CTkFrame(right_panel, fg_color="transparent")
-        table_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        self.tabview = ctk.CTkTabview(
+            right_panel,
+            corner_radius=10,
+            border_width=2,
+            border_color="#2b3035",
+            command=self._on_tab_switched
+        )
+        self.tabview.pack(fill="both", expand=True)
+
+        self.tab_table = self.tabview.add("📋 Tablo Görünümü")
+        self.tab_raw = self.tabview.add("📄 Ham CSV İçeriği (Raw)")
+        self.tab_info = self.tabview.add("ℹ️ Senaryo Rehberi")
+
+        # Sekme 1: Tablo
+        table_frame = ctk.CTkFrame(self.tab_table, fg_color="transparent")
+        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.columns = ("timestamp", "altitude", "speed", "battery_pct", "longitude", "latitude", "pitch", "roll", "yaw")
-        
+
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Treeview", background="#212529", foreground="white", fieldbackground="#212529", rowheight=24)
@@ -236,8 +371,32 @@ class CSVGeneratorApp(ctk.CTk):
         scroll_x.pack(side="bottom", fill="x")
         self.tree.pack(side="left", fill="both", expand=True)
 
+        # Sekme 2: Ham CSV Metni
+        self.txt_raw = ctk.CTkTextbox(self.tab_raw, font=ctk.CTkFont(family="Consolas", size=12))
+        self.txt_raw.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Sekme 3: Senaryo Rehberi
+        info_txt = ctk.CTkTextbox(self.tab_info, font=ctk.CTkFont(size=13))
+        info_txt.pack(fill="both", expand=True, padx=10, pady=10)
+        guide_lines = ["🧪 14 FARKLI İHA TELEMETRİ SENARYOSU REHBERİ\n" + "=" * 55 + "\n"]
+        for idx, (k, v) in enumerate(SCENARIO_DESCRIPTIONS.items(), 1):
+            guide_lines.append(f"{idx:02d}. [{k}]\n    • {v}\n")
+        info_txt.insert("1.0", "\n".join(guide_lines))
+        info_txt.configure(state="disabled")
+
         self._on_scenario_changed(self.combo_scenarios.get())
         self.preview_data_action()
+
+    def _on_tab_switched(self):
+        """Sayfa geçişlerinde yeşil çerçeve parlaması (glow pulse) animasyonu."""
+        glow_colors = ["#2bda72", "#40c057", "#2b8a3e", "#2b3035"]
+
+        def animate_border(idx=0):
+            if idx < len(glow_colors):
+                self.tabview.configure(border_color=glow_colors[idx])
+                self.after(65, animate_border, idx + 1)
+
+        animate_border(0)
 
     def _get_selected_scenario_key(self) -> str:
         idx = self.combo_scenarios.cget("values").index(self.combo_scenarios.get())
@@ -247,6 +406,7 @@ class CSVGeneratorApp(ctk.CTk):
         key = self._get_selected_scenario_key()
         desc = SCENARIO_DESCRIPTIONS.get(key, "")
         self.lbl_scenario_desc.configure(text=f"Açıklama: {desc}")
+        self._on_tab_switched()
 
     def _read_params(self):
         try:
@@ -284,17 +444,20 @@ class CSVGeneratorApp(ctk.CTk):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
+        self.txt_raw.configure(state="normal")
+        self.txt_raw.delete("1.0", "end")
+
         if df is not None and not df.empty:
             for _, row in df.iterrows():
                 vals = [row.get(col, "") for col in self.columns]
                 self.tree.insert("", "end", values=vals)
-            self.lbl_stats.configure(
-                text=f"{len(df)} kayıt üretildi • Durum: Önizleme Hazır",
-                text_color="#51cf66"
-            )
+            csv_text = df.to_csv(index=False)
+            self.txt_raw.insert("1.0", csv_text)
+            self._animate_row_counter(len(df))
         elif raw is not None:
+            self.txt_raw.insert("1.0", raw if raw else "<0 Bayt Boş Dosya>")
             self.lbl_stats.configure(
-                text="Özel Ham/Bozuk Metin Formatı (Boş veya Bozuk Dosya)",
+                text="Özel Ham/Bozuk Metin Formatı (Ham CSV Sekmesine Bakınız)",
                 text_color="#ff6b6b"
             )
         else:
@@ -302,6 +465,29 @@ class CSVGeneratorApp(ctk.CTk):
                 text="0 Bayt Boş Dosya Senaryosu",
                 text_color="#fcc419"
             )
+
+        self.txt_raw.configure(state="disabled")
+        self._on_tab_switched()
+
+    def _animate_row_counter(self, target_count: int):
+        """Üretilen satır sayısını sayaç animasyonuyla gösterir."""
+        steps = 10
+
+        def step(s=1):
+            if s >= steps:
+                self.lbl_stats.configure(
+                    text=f"⚡ {target_count} kayıt üretildi • Durum: Önizleme Hazır",
+                    text_color="#51cf66"
+                )
+                return
+            val = int((target_count / steps) * s)
+            self.lbl_stats.configure(
+                text=f"⏳ {val} kayıt üretiliyor...",
+                text_color="#2bda72"
+            )
+            self.after(20, step, s + 1)
+
+        step(1)
 
     def save_csv_action(self):
         params = self._read_params()
@@ -375,6 +561,7 @@ class CSVGeneratorApp(ctk.CTk):
         if not os.path.exists(sample_dir):
             os.makedirs(sample_dir, exist_ok=True)
         os.startfile(sample_dir)
+
 
 if __name__ == "__main__":
     app = CSVGeneratorApp()

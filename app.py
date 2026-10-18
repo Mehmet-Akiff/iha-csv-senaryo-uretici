@@ -1,6 +1,6 @@
 """
 app.py
-İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.1.0).
+İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.2.0).
 Bağımsız masaüstü arayüzü, otomatik sıralı/tarihli periyot klasörleme,
 açılış ekranı ve animasyon desteği.
 """
@@ -25,16 +25,23 @@ from scenario_engine import TelemetryScenarioGenerator, SCENARIO_DESCRIPTIONS
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("green")
 
+
+def get_resource_path(relative_path: str) -> str:
+    """PyInstaller veya normal çalışmada kaynak dosya yolunu döndürür."""
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+
 class CSVGeneratorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("İHA Telemetri CSV Senaryo Üretici v1.1.0")
+        self.title("İHA Telemetri CSV Senaryo Üretici v1.2.0")
         self.geometry("1200x840")
         self.minsize(980, 720)
 
         # İkon Ayarla
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "generator_icon.ico")
+        icon_path = get_resource_path(os.path.join("assets", "generator_icon.ico"))
         if os.path.exists(icon_path):
             try:
                 self.iconbitmap(icon_path)
@@ -67,7 +74,7 @@ class CSVGeneratorApp(ctk.CTk):
 
         subtitle_lbl = ctk.CTkLabel(
             top_frame,
-            text="Test ve simülasyon için 14 farklı uçuş/hata senaryosu • v1.1.0",
+            text="Test ve simülasyon için 14 farklı uçuş/hata senaryosu • v1.2.0",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )

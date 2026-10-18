@@ -2,11 +2,13 @@
 scenario_engine.py
 İHA telemetri verisi senaryo üretim motoru.
 14 farklı uçuş, sınır ve hata senaryosu üretir.
+Her üretim periyodunu sıralı ve tarihli klasörlerde depolar.
 """
 
 import os
+import re
 from datetime import datetime, timedelta
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 import pandas as pd
 
 SCENARIO_DESCRIPTIONS = {
@@ -163,3 +165,47 @@ class TelemetryScenarioGenerator:
                 pass
 
         return output_file_path
+
+    def generate_isolated_batch(self, base_output_dir: str = "samples", **kwargs) -> str:
+        """
+        Her üretim periyodunu birbiriyle karışmayacak şekilde sıralı ve tarihli
+        ayrı bir alt klasörde oluşturur.
+        Örnek: samples/01_Uretim_2026-10-18_23-55-12/
+        """
+        os.makedirs(base_output_dir, exist_ok=True)
+        
+        # Mevcut periyot dizinlerini tara ve sıradaki numarayı bul
+        existing = [d for d in os.listdir(base_output_dir) if os.path.isdir(os.path.join(base_output_dir, d))]
+        seq_nums = []
+        for name in existing:
+            match = re.match(r"^(\d+)_Uretim", name)
+            if match:
+                seq_nums.append(int(match.group(1)))
+        
+        next_seq = max(seq_nums, default=0) + 1
+        now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        batch_folder_name = f"{next_seq:02d}_Uretim_{now_str}"
+        target_dir = os.path.join(base_output_dir, batch_folder_name)
+        os.makedirs(target_dir, exist_ok=True)
+
+        # 14 senaryonun tamamını bu klasör içine sıralı isimlerle üret
+        report_lines = [
+            f"# ÜRETİM RAPORU - PERİYOT #{next_seq:02d}",
+            f"Tarih/Saat: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Hedef Klasör: {target_dir}",
+            "-" * 60,
+            "Üretilen Senaryo Dosyaları:"
+        ]
+
+        idx = 1
+        for key, desc in self.scenarios.items():
+            filename = f"{idx:02d}_{key}.csv"
+            out_file = os.path.join(target_dir, filename)
+            self.generate_and_save(key, out_file, **kwargs)
+            report_lines.append(f"{idx:02d}. {filename} -> {desc}")
+            idx += 1
+
+        with open(os.path.join(target_dir, "senaryo_listesi.txt"), "w", encoding="utf-8") as f:
+            f.write("\n".join(report_lines))
+
+        return target_dir

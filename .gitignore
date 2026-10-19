@@ -2,5 +2,6 @@ __pycache__/
 *.py[cod]
 build/
 dist/
+dist_signed/
 *.spec
 *.zip

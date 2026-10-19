@@ -1,10 +1,10 @@
 """
 app.py
-İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.5.0).
+İHA Telemetri CSV Senaryo Üretici Masaüstü Uygulaması (v1.6.0).
 Bağımsız masaüstü arayüzü, otomatik sıralı/tarihli periyot klasörleme,
 akıllı en büyük sayı takibi (Üretilen Klasör N), anında canlı önizleme,
-garantili 1.8 sn animasyonlu İHA açılış ekranı (Splash Screen), pencere fade-in
-ve sekme/sayfa geçiş animasyonları.
+şeffaf hata ve temiz veri bildirimleri, garantili 1.8 sn animasyonlu İHA açılış ekranı (Splash Screen),
+pencere fade-in ve sekme/sayfa geçiş animasyonları.
 """
 
 import os
@@ -37,7 +37,7 @@ class CSVGeneratorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("İHA Telemetri CSV Senaryo Üretici v1.5.0")
+        self.title("İHA Telemetri CSV Senaryo Üretici v1.6.0")
         self.geometry("1240x870")
         self.minsize(1020, 740)
 
@@ -118,7 +118,7 @@ class CSVGeneratorApp(ctk.CTk):
 
         sub_lbl = ctk.CTkLabel(
             inner,
-            text="14 Farklı Uçuş, Sensör Hatası ve Sınır Değer Simülatörü • v1.5.0",
+            text="14 Farklı Uçuş, Sensör Hatası ve Sınır Değer Simülatörü • v1.6.0",
             font=ctk.CTkFont(size=11),
             text_color="#69db7c",
             fg_color="#0c2018",
@@ -214,7 +214,7 @@ class CSVGeneratorApp(ctk.CTk):
 
         subtitle_lbl = ctk.CTkLabel(
             top_frame,
-            text="14 Farklı Uçuş ve Hata Senaryosu • Otomatik Sıralı Klasörleme • v1.5.0",
+            text="14 Farklı Uçuş ve Hata Senaryosu • Otomatik Sıralı Klasörleme • v1.6.0",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
@@ -458,9 +458,35 @@ class CSVGeneratorApp(ctk.CTk):
         scroll_x.pack(side="bottom", fill="x")
         self.tree.pack(side="left", fill="both", expand=True)
 
-        # Sekme 2: Ham CSV Metni
-        self.txt_raw = ctk.CTkTextbox(self.tab_raw, font=ctk.CTkFont(family="Consolas", size=12))
-        self.txt_raw.pack(fill="both", expand=True, padx=10, pady=10)
+        # Sekme 2: Ham CSV Metni (Orijinal / Filtresiz Görünüm)
+        raw_box_frame = ctk.CTkFrame(self.tab_raw, fg_color="transparent")
+        raw_box_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        raw_info_bar = ctk.CTkFrame(raw_box_frame, fg_color="#1c2d48", corner_radius=6)
+        raw_info_bar.pack(fill="x", pady=(0, 6))
+
+        self.lbl_raw_tab_info = ctk.CTkLabel(
+            raw_info_bar,
+            text="📄 Doğrudan Üretilen Orijinal Ham CSV Metni (Filtresiz / El Değmemiş)",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#74c0fc"
+        )
+        self.lbl_raw_tab_info.pack(side="left", padx=10, pady=5)
+
+        self.btn_copy_generator_raw = ctk.CTkButton(
+            raw_info_bar,
+            text="📋 Metni Kopyala",
+            width=110,
+            height=24,
+            fg_color="#343a40",
+            hover_color="#495057",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._copy_raw_to_clipboard
+        )
+        self.btn_copy_generator_raw.pack(side="right", padx=8, pady=4)
+
+        self.txt_raw = ctk.CTkTextbox(raw_box_frame, font=ctk.CTkFont(family="Consolas", size=11), wrap="none")
+        self.txt_raw.pack(fill="both", expand=True, padx=0, pady=0)
 
         # Sekme 3: Senaryo Rehberi
         info_txt = ctk.CTkTextbox(self.tab_info, font=ctk.CTkFont(size=13))
@@ -473,6 +499,18 @@ class CSVGeneratorApp(ctk.CTk):
 
         # İlk Başlangıç Yüklemesi
         self._on_scenario_changed(self.combo_scenarios.get())
+
+    def _copy_raw_to_clipboard(self):
+        try:
+            content = self.txt_raw.get("1.0", "end-1c")
+            if content.strip():
+                self.clipboard_clear()
+                self.clipboard_append(content)
+                messagebox.showinfo("Kopyalandı", "Ham CSV içeriği panoya başarıyla kopyalandı!")
+            else:
+                messagebox.showwarning("Boş", "Kopyalanacak içerik bulunamadı.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Panoya kopyalama başarısız: {str(e)}")
 
     def _on_tab_switched(self):
         """Sayfa geçişlerinde yeşil çerçeve parlaması (glow pulse) animasyonu."""
@@ -546,20 +584,39 @@ class CSVGeneratorApp(ctk.CTk):
             csv_text = df.to_csv(index=False)
             self.txt_raw.insert("1.0", csv_text)
 
-            has_errors = key in ["negative_speed", "battery_bounds", "coord_bounds", "text_in_numeric", "empty_fields", "bad_timestamps", "bad_angles", "all_invalid", "mixed"]
-            if has_errors:
-                status_text = f"⚠️ {len(df)} kayıt (Kasıtlı Hata Senaryosu) • Önizleme Hazır"
-                status_color = "#fcc419"
-            else:
-                status_text = f"✓ {len(df)} kayıt (Geçerli Uçuş) • Önizleme Hazır"
-                status_color = "#51cf66"
+            scenario_status_map = {
+                "valid": ("✓ %100 Geçerli Uçuş (Temiz Veri • Hata veya anomali içermez)", "#51cf66"),
+                "with_gaps": ("⏱️ Zaman Kesintisi / Gap (Metin hatası içermez, telemetri atlaması var)", "#fcc419"),
+                "mixed": ("⚠️ Karışık Kısmi Hata (İrtifada 'METIN_HATASI', negatif hız, aşırı batarya vs.)", "#ff922b"),
+                "text_in_numeric": ("⚠️ Sayısal Alanda Metin (İrtifada 'COK_YUKSEK' metin hatası içerir)", "#ff922b"),
+                "negative_speed": ("⚠️ Negatif Hız Hatası (Hız sütununda speed < 0 değerleri enjekte edilir)", "#ff922b"),
+                "battery_bounds": ("⚠️ Batarya Sınır İhlali (%0 altı ve %100 üstü değerler enjekte edilir)", "#ff922b"),
+                "coord_bounds": ("⚠️ Koordinat Sınır İhlali (Enlem/Boylam sınır dışı değerler içerir)", "#ff922b"),
+                "empty_fields": ("⚠️ Boş Alanlar Hatası (Zorunlu telemetri alanları boş bırakılır)", "#ff922b"),
+                "bad_timestamps": ("⚠️ Bozuk Zaman Damgası ('HATALI_ZAMAN_2026' enjekte edilir)", "#ff922b"),
+                "bad_angles": ("⚠️ Açısal Sınır İhlalleri (Pitch > 180, Roll > 180 aşırı açılar)", "#ff922b"),
+                "missing_columns": ("⚠️ Eksik Sütunlu CSV (9 zorunlu sütun eksik üretilir)", "#ff922b"),
+                "all_invalid": ("⚠️ Sıfır Geçerli Kayıt (Tüm satırlar kasıtlı olarak hatalıdır)", "#ff6b6b"),
+                "corrupt_file": ("⚠️ Bozuk CSV Sözdizimi (Açık tırnak ve geçersiz baytlar içerir)", "#ff6b6b"),
+                "empty_file": ("⚠️ 0 Bayt Boş Dosya (Başlık veya veri içermez)", "#ff8787"),
+            }
+
+            status_text, status_color = scenario_status_map.get(
+                key, (f"📊 {len(df)} kayıt • Önizleme Hazır", "#51cf66")
+            )
+            self.lbl_raw_tab_info.configure(
+                text=f"📄 [{key}] Senaryosu İçin Üretilen Orijinal Ham CSV Metni ({len(df)} Satır)",
+                text_color="#51cf66" if "Geçerli" in status_text else "#fcc419"
+            )
         elif raw is not None:
             self.txt_raw.insert("1.0", raw if raw else "<0 Bayt Boş Dosya>")
             status_text = "⚠️ Özel Ham/Bozuk Metin (Ham CSV Sekmesine Bakın)"
             status_color = "#ff6b6b"
+            self.lbl_raw_tab_info.configure(text=f"📄 [{key}] Ham Bozuk Metin", text_color="#ff6b6b")
         else:
             status_text = "⚠️ 0 Bayt Boş Dosya Senaryosu"
             status_color = "#ff8787"
+            self.lbl_raw_tab_info.configure(text="📄 0 Bayt Boş Dosya", text_color="#ff8787")
 
         self.lbl_stats.configure(text=status_text, text_color=status_color)
         self.txt_raw.configure(state="disabled")

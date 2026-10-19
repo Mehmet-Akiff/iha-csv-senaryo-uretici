@@ -1,8 +1,9 @@
 """
 scenario_engine.py
-İHA telemetri verisi senaryo üretim motoru.
+İHA telemetri verisi senaryo üretim motoru (v1.5.0).
 14 farklı uçuş, sınır ve hata senaryosu üretir.
-Her üretim periyodunu sıralı ve tarihli klasörlerde depolar.
+Her üretim periyodunu hedef klasördeki en büyük numarayı takip ederek
+'Üretilen Klasör N - Tarih' formatında sıralı ve izole klasörlerde depolar.
 """
 
 import os
@@ -28,6 +29,34 @@ SCENARIO_DESCRIPTIONS = {
     "corrupt_file": "14. Bozuk Biçimli / Sözdizimi Hatalı CSV"
 }
 
+# 5 Temel Senaryo Paketi (Hızlı ve etkili test için 5 temel CSV)
+TEMEL_SCENARIOS = {
+    "valid": "01_gecerli_ucus.csv",
+    "with_gaps": "02_zaman_kesintili_ucus.csv",
+    "mixed": "03_karisik_hatali_ucus.csv",
+    "negative_speed": "04_negatif_hiz_hatasi.csv",
+    "battery_bounds": "05_batarya_sinir_ihlali.csv",
+}
+
+# 14 Senaryonun Tamamı
+TUM_SCENARIOS = {
+    "valid": "01_gecerli_ucus.csv",
+    "with_gaps": "02_zaman_kesintili_ucus.csv",
+    "mixed": "03_karisik_hatali_ucus.csv",
+    "negative_speed": "04_negatif_hiz_hatasi.csv",
+    "battery_bounds": "05_batarya_sinir_ihlali.csv",
+    "coord_bounds": "06_koordinat_sinir_ihlali.csv",
+    "text_in_numeric": "07_sayisal_alanda_metin.csv",
+    "empty_fields": "08_bos_zorunlu_alanlar.csv",
+    "bad_timestamps": "09_bozuk_zaman_damgasi.csv",
+    "bad_angles": "10_acisal_sinir_ihlalleri.csv",
+    "missing_columns": "11_eksik_sutunlu_csv.csv",
+    "all_invalid": "12_sifir_gecerli_kayit.csv",
+    "empty_file": "13_bos_dosya_0_bayt.csv",
+    "corrupt_file": "14_bozuk_csv_sozdizimi.csv",
+}
+
+
 class TelemetryScenarioGenerator:
     """Belirlenen senaryoya göre sentetik telemetri verisi üreten motor."""
 
@@ -36,6 +65,35 @@ class TelemetryScenarioGenerator:
 
     def get_available_scenarios(self) -> Dict[str, str]:
         return self.scenarios
+
+    def get_next_sequence_number(self, base_output_dir: str) -> int:
+        """
+        Hedef klasördeki mevcut alt klasörleri tarar ve bulunan EN BÜYÜK sayıdan 1 fazlasını döner.
+        - Eğer klasörde hiç numaralı klasör yoksa: 1 döner.
+        - Eğer klasörde 1 ve 2 varsa: 2 + 1 = 3 döner.
+        - Eğer 1 silinmiş ancak 2 duruyorsa: max(2) + 1 = 3 döner (en büyük sayıdan devam eder).
+        - Eğer yeni/farklı bir boş klasöre geçilirse: 1 döner.
+        """
+        if not os.path.exists(base_output_dir):
+            return 1
+
+        seq_nums = []
+        pattern = re.compile(r"(?:Üretilen[ _]Klasör[ _]|Uretim[ _]|Klasor[ _]|^)(\d+)", re.IGNORECASE)
+
+        for item in os.listdir(base_output_dir):
+            full_path = os.path.join(base_output_dir, item)
+            if os.path.isdir(full_path):
+                match = pattern.search(item)
+                if match:
+                    try:
+                        num = int(match.group(1))
+                        seq_nums.append(num)
+                    except ValueError:
+                        pass
+
+        if seq_nums:
+            return max(seq_nums) + 1
+        return 1
 
     def generate_data(
         self,
@@ -166,46 +224,59 @@ class TelemetryScenarioGenerator:
 
         return output_file_path
 
-    def generate_isolated_batch(self, base_output_dir: str = "samples", **kwargs) -> str:
+    def generate_numbered_folder(
+        self,
+        base_output_dir: str,
+        mode: str = "temel",
+        selected_scenario_key: str = "valid",
+        **kwargs
+    ) -> Tuple[str, int, int]:
         """
-        Her üretim periyodunu birbiriyle karışmayacak şekilde sıralı ve tarihli
-        ayrı bir alt klasörde oluşturur.
-        Örnek: samples/01_Uretim_2026-10-18_23-55-12/
+        Hedef klasördeki en büyük sayıyı bulur, 1 fazlasını alarak
+        'Üretilen Klasör N - Tarih' formatında izole klasör açar ve CSV'leri üretir.
+        Döner: (target_folder_path, sequence_number, file_count)
         """
         os.makedirs(base_output_dir, exist_ok=True)
-        
-        # Mevcut periyot dizinlerini tara ve sıradaki numarayı bul
-        existing = [d for d in os.listdir(base_output_dir) if os.path.isdir(os.path.join(base_output_dir, d))]
-        seq_nums = []
-        for name in existing:
-            match = re.match(r"^(\d+)_Uretim", name)
-            if match:
-                seq_nums.append(int(match.group(1)))
-        
-        next_seq = max(seq_nums, default=0) + 1
+        seq_num = self.get_next_sequence_number(base_output_dir)
         now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        batch_folder_name = f"{next_seq:02d}_Uretim_{now_str}"
-        target_dir = os.path.join(base_output_dir, batch_folder_name)
+        folder_name = f"Üretilen Klasör {seq_num} - {now_str}"
+        target_dir = os.path.join(base_output_dir, folder_name)
         os.makedirs(target_dir, exist_ok=True)
 
-        # 14 senaryonun tamamını bu klasör içine sıralı isimlerle üret
+        if mode == "temel":
+            scenarios_to_gen = TEMEL_SCENARIOS
+            mode_title = "Temel Test Paketi (5 Senaryo)"
+        elif mode == "tum":
+            scenarios_to_gen = TUM_SCENARIOS
+            mode_title = "Tüm 14 Senaryo Paketi"
+        else:  # tekil
+            filename = f"01_{selected_scenario_key}.csv"
+            scenarios_to_gen = {selected_scenario_key: filename}
+            mode_title = f"Tekil Senaryo ({selected_scenario_key})"
+
         report_lines = [
-            f"# ÜRETİM RAPORU - PERİYOT #{next_seq:02d}",
+            f"# İHA TELEMETRİ ÜRETİM RAPORU - {folder_name}",
+            f"Paket Türü: {mode_title}",
             f"Tarih/Saat: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Hedef Klasör: {target_dir}",
+            f"Klasör Numarası: #{seq_num}",
             "-" * 60,
-            "Üretilen Senaryo Dosyaları:"
+            "Klasördeki CSV Dosyaları:"
         ]
 
-        idx = 1
-        for key, desc in self.scenarios.items():
-            filename = f"{idx:02d}_{key}.csv"
+        file_count = 0
+        for key, filename in scenarios_to_gen.items():
             out_file = os.path.join(target_dir, filename)
             self.generate_and_save(key, out_file, **kwargs)
-            report_lines.append(f"{idx:02d}. {filename} -> {desc}")
-            idx += 1
+            desc = self.scenarios.get(key, key)
+            report_lines.append(f"• {filename}  -->  {desc}")
+            file_count += 1
 
         with open(os.path.join(target_dir, "senaryo_listesi.txt"), "w", encoding="utf-8") as f:
             f.write("\n".join(report_lines))
 
+        return target_dir, seq_num, file_count
+
+    def generate_isolated_batch(self, base_output_dir: str = "samples", **kwargs) -> str:
+        """Geriye dönük uyumluluk için eski metot çağrısı."""
+        target_dir, _, _ = self.generate_numbered_folder(base_output_dir, mode="tum", **kwargs)
         return target_dir
